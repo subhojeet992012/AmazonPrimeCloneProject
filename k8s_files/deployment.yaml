@@ -5,7 +5,6 @@ metadata:
   name: pandacloud-app
   labels:
     app: pandacloud-app
-
 spec:
   replicas: 1
   selector:
