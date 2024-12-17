@@ -10,8 +10,8 @@ pipeline {
     parameters {
         string(name: 'ECR_REPO_NAME', description: 'Enter the name of the ECR', defaultValue: 'amazon-prime')
         string(name: 'AWS_ACCOUNT_ID', description: 'Enter the AccountID', defaultValue: '')
-        string(name: 'AWS_ACCESS_KEY', description: 'Enter the aws access key', defaultValue: 'AKIA5FTZDKKLUZW6N3WO')
-        string(name: 'AWS_SECRET_KEY', description: 'Enter the aws secret key', defaultValue: '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')
+        string(name: 'AWS_ACCESS_KEY', description: 'Enter the aws access key', defaultValue: '')
+        string(name: 'AWS_SECRET_KEY', description: 'Enter the aws secret key', defaultValue: '')
     }
     stages {
         stage('1. Git Checkout') {
@@ -83,7 +83,22 @@ pipeline {
                     """
             }
         }
-        stage('10. Cleanup the Images') {
+        stage('10. Update the deployment tag') {
+            steps {
+                withCredentials([string(credentialsId: 'GITHUB_ACCESS_TOKEN', variable: 'GITHUB_ACCESS_TOKEN')]) {
+                    sh '''
+                        cd k8s_files
+                        sed -i "s|image: .*|image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/amazon-prime:${BUILD_NUMBER}|" deployment.yaml
+                        git add deployment.yaml
+                        git commit -m "Push the build ${BUILD_NUMBER}"
+                        set +x # Prevent sensitive info from being printed
+                        git push https://oauth2:${GITHUB_ACCESS_TOKEN}@github.com/subhojeet992012/AmazonPrimeCloneProject.git
+                        set -x
+                    '''
+                    }
+                }
+            }
+        stage('11. Cleanup the Images') {
             steps {
                 sh """
                     docker rmi -f ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:$BUILD_NUMBER
