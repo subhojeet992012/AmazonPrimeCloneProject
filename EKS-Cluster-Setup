@@ -1,0 +1,20 @@
+eksctl create cluster --name=amazon-prime \
+    --region=us-east-1 \
+    --zones=us-east-1a,us-east-1b \
+    --without-nodegroup
+eksctl utils associate-iam-oidc-provider \
+    --region us-east-1 \
+    --cluster amazon-prime \
+    --approve
+eksctl create nodegroup --cluster=amazon-prime \
+    --region=us-east-1 \
+    --name=amazon-prime-ng-private \
+    --node-type=t3.medium \
+    --nodes-min=2 \
+    --nodes-max=3 \
+    --node-volume-size=20 \
+    --managed \
+    --asg-access \
+    --external-dns-access \
+    --full-ecr-access \
+    --appmesh-access
