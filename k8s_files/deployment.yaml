@@ -1,10 +1,13 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pandacloud-app
   labels:
     app: pandacloud-app
+  annotations:
+    prometheus.io/scrape: "true"                # Enable scraping
+    prometheus.io/port: "3000"                  # Port where metrics are exposed
+    prometheus.io/path: "/metrics"              # Path for metrics (optional, default is /metrics)
 spec:
   replicas: 1
   selector:
@@ -20,4 +23,3 @@ spec:
         image: 654654212563.dkr.ecr.us-east-1.amazonaws.com/amazon-prime:32
         ports:
         - containerPort: 3000
-...
