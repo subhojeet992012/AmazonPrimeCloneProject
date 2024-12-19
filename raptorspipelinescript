@@ -47,7 +47,10 @@ pipeline {
                     who
                     whoami
                     pwd
-                    docker run --rm -v \$(pwd):/project aquasec/trivy:latest filesystem /project > trivy-scan-results.txt
+                    docker run --rm \
+                    -v \$(pwd):/project \
+                    -e TRIVY_TIMEOUT=10m \
+                    aquasec/trivy:latest filesystem /project > trivy-scan-results.txt
                 """
             }
         }
