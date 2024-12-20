@@ -1,0 +1,30 @@
+metricbeat.modules:
+  - module: system
+    period: 10s
+    metricsets:
+      - cpu
+      - memory
+      - network
+      - diskio
+      - filesystem
+      - uptime
+      - process
+      - socket_summary
+    processors:
+      - drop_event.when.regexp:
+          system.process.name: '.*docker.*'
+
+output.elasticsearch:
+  hosts: ["http://192.168.32.137:9200"]  # Replace with your Elasticsearch host
+
+setup.kibana:
+  host: "http://192.168.32.137:5601"  # Replace with your Kibana host
+
+logging:
+  level: info
+  to_files: true
+  files:
+    path: /var/log/metricbeat
+    name: metricbeat
+    keepfiles: 7
+    permissions: 0644

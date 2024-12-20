@@ -1,0 +1,96 @@
+pipeline {
+    agent any
+
+    environment {
+        KUBECTL = '/usr/local/bin/kubectl'
+    }
+
+    parameters {
+        string(name: 'CLUSTER_NAME', defaultValue: 'amazon-prime', description: 'Enter your EKS cluster name')
+        string(name: 'AWS_ACCESS_KEY', description: 'Enter the aws access key', defaultValue: '')
+        string(name: 'AWS_SECRET_KEY', description: 'Enter the aws secret key', defaultValue: '')
+        string(name: 'AWS_ACCOUNT_NUMBER', description: 'Enter the AWS ACCOUNT NUMBER', defaultValue: '')
+    }
+
+    stages {
+        stage("Login to EKS") {
+            steps {
+                script  {
+                        sh """
+                        export AWS_ACCESS_KEY_ID=${params.AWS_ACCESS_KEY}
+                        export AWS_SECRET_ACCESS_KEY=${params.AWS_SECRET_KEY}
+                        aws eks --region us-east-1 update-kubeconfig --name ${params.CLUSTER_NAME}
+                        """
+                }
+            }
+        }
+        stage("Configure ArgoCD & Kube-State-Metrics") {
+            steps {
+                script {
+                    sh '''#!/bin/bash
+                    # Ensure namespace exists
+                    ${KUBECTL} create namespace argocd || true
+                    
+                    # Install ArgoCD & KubeStateMetrics
+                    ${KUBECTL} apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+                    mkdir kubestate 
+                    cd kubestate
+                    git clone https://github.com/kubernetes/kube-state-metrics.git
+                    cd kube-state-metrics
+                    ${KUBECTL} apply -k .
+                    cd ..
+                    rm -f kubectl apply -k .
+                    
+                    # Patch ArgoCD server service to be a LoadBalancer & Kubestate mterics to 8085
+                    ${KUBECTL} patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+                    kubectl expose svc kube-state-metrics --type=LoadBalancer --name=kube-state-metrics-loadbalancer -n kube-system --port=8080
+                    for i in {1..10}; do
+                        echo "$(kubectl get svc kube-state-metrics-loadbalancer -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].hostname}:{.spec.ports[0].port}')"
+                    done
+
+                    # Wait for external IP to be provisioned
+                    echo "Waiting for ArgoCD server external IP..."
+                    for i in {1..10}; do
+                        argo_url=$(${KUBECTL} get svc -n argocd argocd-server -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null)
+                        [ -z "$argo_url" ] && sleep 10 || break
+                    done
+
+                    if [ -z "$argo_url" ]; then
+                        echo "ERROR: Failed to retrieve ArgoCD server external IP."
+                        exit 1
+                    fi
+
+                    echo "ArgoCD server external IP: $argo_url"
+
+                    # Fetch initial password
+                    argo_password=$(${KUBECTL} -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode)
+
+                    # Install ArgoCD CLI if not present
+                    if ! command -v argocd > /dev/null 2>&1; then
+                        curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+                        chmod +x /usr/local/bin/argocd
+                    fi
+
+                    # Log in to ArgoCD
+                    echo "Logging into ArgoCD..."
+                    argocd login $argo_url --username admin --password $argo_password --insecure
+                    '''
+                }
+            }
+        }
+        
+		stage("Deploy the application through ArgoCD") {
+            steps {
+                script  {
+                        sh """
+                        argocd app create prime-video --repo https://github.com/subhojeet992012/AmazonPrimeCloneProject.git --path k8s_files --dest-namespace default --dest-server https://kubernetes.default.svc --directory-recurse --sync-policy automated
+						argocd app list
+						echo "The application can be viewed at http://\$(kubectl get svc | grep pandacloud-app | awk '{print \$4}'):3000"
+                        """
+                }
+            }
+        }
+		
+    }
+}
+
